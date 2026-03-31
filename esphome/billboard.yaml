@@ -1,0 +1,210 @@
+esphome:
+  name: billboard
+  on_boot:
+    priority: -100
+    then:
+      - delay: 15s
+      - globals.set:
+          id: boot_grace_period
+          value: 'false'
+
+esp32:
+  board: esp32doit-devkit-v1
+  framework:
+    type: esp-idf
+
+wifi:
+  on_connect:
+    - globals.set:
+        id: is_wifi_connected
+        value: 'true'
+    - globals.set:
+        id: has_download_error
+        value: 'false'
+    - globals.set:
+        id: last_update_time
+        value: !lambda "return millis();"
+    - component.update: billboard_image
+    - globals.set:
+        id: has_downloaded_image
+        value: 'true'
+  on_disconnect:
+    - globals.set:
+        id: is_wifi_connected
+        value: 'false'
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Transit Billboard"
+    password: "ilovetrains"
+
+# Fallback captive portal for device setup
+captive_portal:
+
+ota:
+  - platform: esphome
+    id: billboard_ota
+    password: !secret billboard_ota_password
+    port: 3232  # Recommended value for ESP32
+
+logger:
+  level: DEBUG
+
+globals:
+  - id: has_downloaded_image
+    type: bool
+    initial_value: 'false'
+  - id: boot_grace_period
+    type: bool
+    initial_value: 'true'
+  - id: is_wifi_connected
+    type: bool
+    initial_value: 'false'
+  - id: has_download_error
+    type: bool
+    initial_value: 'false'
+  - id: last_update_time
+    type: uint32_t
+    initial_value: '0'
+
+button:
+  - platform: factory_reset
+    name: "Billboard Factory Reset"
+    id: factory_reset_btn
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Physical Boot Button"
+    id: boot_button
+    internal: true
+    on_multi_click:
+      - timing:
+          - ON for at least 5s
+        then:
+          - button.press: factory_reset_btn
+
+switch:
+  - platform: template
+    name: "Billboard Power"
+    id: billboard_power
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+number:
+  - platform: template
+    name: "Billboard Brightness"
+    id: billboard_brightness
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: |-
+          int actual = (x / 100.0) * 255.0;
+          id(matrix_display).set_brightness(actual);
+
+api:
+  services:
+    - service: update_billboard
+      then:
+        - globals.set:
+            id: has_download_error
+            value: 'false'
+        - globals.set:
+            id: last_update_time
+            value: !lambda "return millis();"
+        - component.update: billboard_image
+
+http_request:
+
+image:
+  - file: "loading.bmp"
+    id: loading_image
+    type: RGB565
+  - file: "no_wifi.bmp"
+    id: no_wifi_image
+    type: RGB565
+  - file: "update_failed.bmp"
+    id: update_failed_image
+    type: RGB565
+  - file: "stale.bmp"
+    id: stale_image
+    type: RGB565
+
+online_image:
+  - id: billboard_image
+    url: "http://homeassistant.local:8123/local/transit_billboard.bmp"
+    type: RGB565
+    format: bmp # or jpeg/png based on the generated image
+    update_interval: never
+    on_error:
+      - logger.log: "Failed to fetch billboard image."
+      - globals.set:
+          id: has_download_error
+          value: 'true'
+
+display:
+  - platform: hub75
+    id: matrix_display
+    panel_width: 64
+    panel_height: 32
+    r1_pin: GPIO25
+    g1_pin: GPIO27
+    b1_pin: GPIO26
+    r2_pin: GPIO14
+    g2_pin: GPIO13
+    b2_pin: GPIO21
+    a_pin: GPIO23
+    b_pin: GPIO19
+    c_pin: GPIO22
+    d_pin: GPIO17
+    e_pin: GPIO32  # Optional, omit for 1/16 scan panels
+    lat_pin: GPIO4
+    oe_pin: GPIO33
+    clk_pin: GPIO18
+    bit_depth: 12
+
+    show_test_card: false
+    auto_clear_enabled: false
+    lambda: |-
+      if (!id(billboard_power).state) {
+        it.fill(Color::BLACK);
+        return;
+      }
+      
+      if (id(boot_grace_period) && !id(has_downloaded_image)) {
+        it.image(0, 0, id(loading_image));
+      } else if (!id(is_wifi_connected)) {
+        it.image(0, 0, id(no_wifi_image));
+      } else if (id(has_download_error)) {
+        it.image(0, 0, id(update_failed_image));
+      } else if (id(last_update_time) != 0 && (millis() - id(last_update_time) > 120000)) {
+        it.image(0, 0, id(stale_image));
+      } else if (!id(has_downloaded_image)) {
+        it.image(0, 0, id(loading_image));
+      } else {
+        it.image(0, 0, id(billboard_image));
+      }
+
+    # r1_pin: GPIO25
+    # g1_pin: GPIO26
+    # b1_pin: GPIO27
+    # r2_pin: GPIO21
+    # g2_pin: GPIO22
+    # b2_pin: GPIO32
+    # a_pin: GPIO23
+    # b_pin: GPIO19
+    # c_pin: GPIO5
+    # d_pin: GPIO17
+    # e_pin: GPIO18  # Optional, omit for 1/16 scan panels
+    # lat_pin: GPIO4
+    # oe_pin: GPIO15
+    # clk_pin: GPIO16
