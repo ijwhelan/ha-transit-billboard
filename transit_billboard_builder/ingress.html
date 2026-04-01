@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transit Billboard Editor</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; color: #eee; margin:0; padding:20px; display:flex; gap:30px; flex-wrap: wrap; }
+        .editor { flex: 1; min-width: 650px; }
+        .sidebar { width: 350px; background: #222; padding: 20px; border-radius: 8px; box-sizing: border-box; }
+        
+        /* The 640x320 grid representing 64x32 scaled by 10 */
+        #canvas {
+            position: relative;
+            width: 640px; height: 320px;
+            background-color: #000;
+            background-image: url('preview_bg.bmp');
+            background-size: 100% 100%;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            border: 2px solid #444;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+
+        /* Draggable elements */
+        .route-element {
+            position: absolute;
+            background: rgba(255, 165, 0, 0.3);
+            border: 1px solid #ffa500;
+            cursor: grab;
+            user-select: none;
+            /* Placeholder bound: A bit wider, assume 2 digits & margin */
+            width: 100px; height: 70px;
+            color: #fff; text-shadow: 1px 1px 0px #000;
+            font-size: 11px; padding: 5px; box-sizing: border-box;
+            display:flex; align-items:center; justify-content:center; text-align:center;
+            transition: background 0.1s;
+        }
+        .route-element:active { cursor: grabbing; background: rgba(255, 165, 0, 0.7); }
+        
+        .route-item { background: #333; padding: 15px; margin-bottom: 12px; border-radius: 6px; position:relative; }
+        input[type=text] { width: 100%; box-sizing:border-box; margin-top:4px; margin-bottom:8px; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:3px; }
+        button { background: #03a9f4; color: white; border: none; padding: 10px; width:100%; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:14px; }
+        button:hover { background: #0288d1; }
+        .remove-btn { position:absolute; top:15px; right:15px; background:transparent; color:#f44336; width:auto; padding:0; font-size:12px; }
+        .remove-btn:hover { background:transparent; text-decoration:underline; }
+        
+        hr { border-color: #333; margin: 20px 0; border-bottom:0; }
+    </style>
+</head>
+<body>
+    <div class="editor">
+        <h2 style="margin-top:0;">Billboard Layout Editor</h2>
+        <p style="color:#aaa;">Drag the orange boxes on the matrix below to position where each physical transit line's arrival time will be rendered on your 64x32 display. <i>(Canvas is scaled 10x for ease of use)</i>.</p>
+        
+        <div id="canvas"></div>
+        
+        <h3 style="margin-top:30px;">1. Upload Background</h3>
+        <p style="color:#aaa; font-size:13px; margin-top:-5px;">Upload a perfectly sized 64x32 <code>.bmp</code> file. Transparent areas must be absolute black (<code>#000000</code>). Re-uploading applies instantly.</p>
+        <form action="upload" method="post" enctype="multipart/form-data" style="display:flex; gap:10px;">
+            <input type="file" name="background" accept=".bmp" required style="padding:5px; background:#222; border-radius:4px; color:#fff;">
+            <button type="submit" style="width:auto; padding:8px 15px;">Upload .bmp</button>
+        </form>
+        
+        <br>
+        <h3>Live Matrix Output</h3>
+        <img id="livePreview" src="preview_live.bmp" style="width:320px; image-rendering:pixelated; border:1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+    </div>
+    
+    <div class="sidebar">
+        <h3 style="margin-top:0;">Transit Lines</h3>
+        <div id="routesList"></div>
+        <button onclick="addRoute()" style="background:#4caf50;">+ Add Transit Line</button>
+        <hr>
+        <button onclick="saveConfig()" style="font-size:16px; padding:15px;">🚀 Save Layout & Update</button>
+    </div>
+
+<script>
+let lines = [];
+let draggingEl = null;
+let startX, startY, initialX, initialY;
+
+async function loadConfig() {
+    try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+            lines = await res.json();
+            renderRoutes();
+            renderCanvas();
+        }
+    } catch (e) {
+        alert("Failed to load configuration API!");
+    }
+}
+
+function renderRoutes() {
+    const list = document.getElementById('routesList');
+    list.innerHTML = '';
+    lines.forEach((line, i) => {
+        const item = document.createElement('div');
+        item.className = 'route-item';
+        item.innerHTML = `
+            <strong>Route #${i+1}</strong>
+            <button class="remove-btn" onclick="removeRoute(${i})">Remove</button>
+            <br><br>
+            <label style="font-size:12px; color:#ccc;">Display Name:</label>
+            <input type="text" value="${line.name}" placeholder="e.g. K-Ingleside" onchange="updateRoute(${i}, 'name', this.value)">
+            <label style="font-size:12px; color:#ccc;">Home Assistant Entity ID:</label>
+            <input type="text" value="${line.entity_id}" placeholder="sensor.xyz" onchange="updateRoute(${i}, 'entity_id', this.value)">
+        `;
+        list.appendChild(item);
+    });
+}
+
+function renderCanvas() {
+    const canvas = document.getElementById('canvas');
+    canvas.innerHTML = '';
+    lines.forEach((line, i) => {
+        const el = document.createElement('div');
+        el.className = 'route-element';
+        el.innerHTML = `<b>${line.name}</b><br><small>(${line.x}, ${line.y})</small>`;
+        el.style.left = (line.x * 10) + 'px';
+        el.style.top = (line.y * 10) + 'px';
+        
+        el.onmousedown = (e) => {
+            draggingEl = el;
+            draggingEl.dataset.index = i;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialX = line.x * 10;
+            initialY = line.y * 10;
+            document.onmousemove = onDrag;
+            document.onmouseup = stopDrag;
+        };
+        canvas.appendChild(el);
+    });
+}
+
+function onDrag(e) {
+    if(!draggingEl) return;
+    e.preventDefault();
+    let dx = e.clientX - startX;
+    let dy = e.clientY - startY;
+    let newX = initialX + dx;
+    let newY = initialY + dy;
+    
+    // Snap to 10px grid (1px on the matrix)
+    newX = Math.round(newX / 10) * 10;
+    newY = Math.round(newY / 10) * 10;
+    
+    if(newX < 0) newX = 0;
+    if(newY < 0) newY = 0;
+    if(newX > 630) newX = 630;
+    if(newY > 310) newY = 310;
+    
+    draggingEl.style.left = newX + 'px';
+    draggingEl.style.top = newY + 'px';
+    
+    const i = draggingEl.dataset.index;
+    lines[i].x = newX / 10;
+    lines[i].y = newY / 10;
+    draggingEl.innerHTML = `<b>${lines[i].name}</b><br><small>(${lines[i].x}, ${lines[i].y})</small>`;
+}
+
+function stopDrag() {
+    draggingEl = null;
+    document.onmousemove = null;
+    document.onmouseup = null;
+}
+
+function addRoute() {
+    lines.push({ name: "New Line", entity_id: "sensor.", x: 0, y: 0 });
+    renderRoutes();
+    renderCanvas();
+}
+
+function updateRoute(i, key, val) {
+    lines[i][key] = val;
+    renderCanvas();
+}
+
+function removeRoute(i) {
+    lines.splice(i, 1);
+    renderRoutes();
+    renderCanvas();
+}
+
+async function saveConfig() {
+    try {
+        await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lines)
+        });
+        
+        // Refresh live preview to bypass cache
+        document.getElementById('livePreview').src = "preview_live.bmp?t=" + Date.now();
+        alert("Layout saved! Billboard successfully updated.");
+    } catch (e) {
+        alert("Failed to save configuration!");
+    }
+}
+
+function refreshImages() {
+    document.getElementById('canvas').style.backgroundImage = "url('preview_bg.bmp?t=" + Date.now() + "')";
+    document.getElementById('livePreview').src = "preview_live.bmp?t=" + Date.now();
+}
+
+// Init
+loadConfig();
+refreshImages();
+</script>
+</body>
+</html>
