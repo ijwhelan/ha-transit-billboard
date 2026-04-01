@@ -1,6 +1,6 @@
 name: "Transit Billboard Builder"
 description: "Generates a BMP image for your ESPHome transit billboard."
-version: "1.0.2"
+version: "1.0.3"
 slug: "transit_billboard_builder"
 init: false
 arch:

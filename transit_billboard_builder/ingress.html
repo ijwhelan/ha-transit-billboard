@@ -77,6 +77,9 @@
         <button onclick="saveConfig()" style="font-size:16px; padding:15px;">🚀 Save Layout & Update</button>
     </div>
 
+    <!-- Hidden datalist for entity autocomplete -->
+    <datalist id="ha-entities"></datalist>
+
 <script>
 let lines = [];
 let draggingEl = null;
@@ -84,11 +87,24 @@ let startX, startY, initialX, initialY;
 
 async function loadConfig() {
     try {
+        // Fetch config
         const res = await fetch('/api/config');
         if (res.ok) {
             lines = await res.json();
             renderRoutes();
             renderCanvas();
+        }
+        
+        // Fetch entities for autocomplete dropdown
+        const entRes = await fetch('/api/entities');
+        if (entRes.ok) {
+            const entities = await entRes.json();
+            const dl = document.getElementById('ha-entities');
+            entities.forEach(ent => {
+                const opt = document.createElement('option');
+                opt.value = ent;
+                dl.appendChild(opt);
+            });
         }
     } catch (e) {
         alert("Failed to load configuration API!");
@@ -108,7 +124,7 @@ function renderRoutes() {
             <label style="font-size:12px; color:#ccc;">Display Name:</label>
             <input type="text" value="${line.name}" placeholder="e.g. K-Ingleside" onchange="updateRoute(${i}, 'name', this.value)">
             <label style="font-size:12px; color:#ccc;">Home Assistant Entity ID:</label>
-            <input type="text" value="${line.entity_id}" placeholder="sensor.xyz" onchange="updateRoute(${i}, 'entity_id', this.value)">
+            <input type="text" list="ha-entities" value="${line.entity_id}" placeholder="sensor.xyz" onchange="updateRoute(${i}, 'entity_id', this.value)">
         `;
         list.appendChild(item);
     });

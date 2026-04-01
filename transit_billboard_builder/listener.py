@@ -251,11 +251,35 @@ async def handle_preview_live(request):
         return web.FileResponse(OUTPUT_PATH)
     return web.Response(status=404, text="No live output generated yet")
 
+async def handle_get_entities(request):
+    if not SUPERVISOR_TOKEN:
+        return web.json_response([])
+        
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "content-type": "application/json",
+    }
+    url = "http://supervisor/core/api/states"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # Filter to just sensor entities or allow all? Let's return all entity_ids for flexibility
+                    entities = [state.get("entity_id") for state in data if "entity_id" in state]
+                    return web.json_response(entities)
+    except Exception as e:
+        logging.error(f"Error fetching entities list: {e}")
+        
+    return web.json_response([])
+
 async def start_web_server():
     app = web.Application()
     app.add_routes([
         web.get('/', handle_index),
         web.get('/api/config', handle_get_config),
+        web.get('/api/entities', handle_get_entities),
         web.post('/api/config', handle_post_config),
         web.post('/upload', handle_upload),
         web.get('/preview_bg.bmp', handle_preview_bg),
