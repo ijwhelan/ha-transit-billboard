@@ -1,13 +1,5 @@
 # Gitignore settings for ESPHome
 # This is an example and may include too much for your use-case.
 # You can modify this file to suit your needs.
-*/.esphome/
-.esphome
-*/secrets.yaml
-secrets.yaml
-*.backup
-*/.DS_Store
-.DS_Store
-billboard_log.txt
-__pycache__/
-*/__pycache__
+/.esphome/
+/secrets.yaml
