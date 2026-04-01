@@ -3,6 +3,7 @@ import websockets
 import json
 import logging
 import os
+import time
 import aiohttp
 from ha_billboard import generate_billboard
 
@@ -12,6 +13,7 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 OPTIONS_PATH = os.environ.get('OPTIONS_PATH', '/data/options.json')
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN', '')
 OUTPUT_PATH = os.environ.get('OUTPUT_PATH', '/config/www/transit_billboard.bmp')
+ESP_UPDATE_SERVICE = ""
 
 # Default entities if options.json is missing or incomplete
 ENTITIES = {
@@ -27,7 +29,7 @@ current_data = {
 }
 
 def load_options():
-    global ENTITIES
+    global ENTITIES, ESP_UPDATE_SERVICE
     if os.path.exists(OPTIONS_PATH):
         try:
             with open(OPTIONS_PATH, 'r') as f:
@@ -36,6 +38,7 @@ def load_options():
                 ENTITIES['K-Ingleside'] = opts.get('k_ingleside_sensor', ENTITIES['K-Ingleside'])
                 ENTITIES['43-Masonic'] = opts.get('_43_masonic_sensor', ENTITIES['43-Masonic'])
                 ENTITIES['23-Monterey'] = opts.get('_23_monterey_sensor', ENTITIES['23-Monterey'])
+                ESP_UPDATE_SERVICE = opts.get('esp_update_service', "")
         except Exception as e:
             logging.error(f"Error loading options.json: {e}")
 
@@ -136,6 +139,20 @@ async def listen():
                             
                             current_data[route_name] = parse_state(new_state)
                             generate_billboard(current_data, None, OUTPUT_PATH)
+                            
+                            if ESP_UPDATE_SERVICE and "." in ESP_UPDATE_SERVICE:
+                                domain, service = ESP_UPDATE_SERVICE.split(".", 1)
+                                try:
+                                    await websocket.send(json.dumps({
+                                        "id": int(time.time() * 1000),
+                                        "type": "call_service",
+                                        "domain": domain,
+                                        "service": service,
+                                        "service_data": {}
+                                    }))
+                                    logging.info(f"Triggered ESP update service: {ESP_UPDATE_SERVICE}")
+                                except Exception as err:
+                                    logging.error(f"Failed to trigger ESP update: {err}")
                             break
                             
         except websockets.exceptions.ConnectionClosed:

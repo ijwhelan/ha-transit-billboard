@@ -17,7 +17,9 @@ options:
   k_ingleside_sensor: "sensor.k_ingleside_arrivals"
   _43_masonic_sensor: "sensor.43_masonic_arrivals"
   _23_monterey_sensor: "sensor.23_monterey_arrivals"
+  esp_update_service: "esphome.billboard_update_billboard"
 schema:
-  k_ingleside_sensor: "str"
-  _43_masonic_sensor: "str"
-  _23_monterey_sensor: "str"
+  k_ingleside_sensor: "entity"
+  _43_masonic_sensor: "entity"
+  _23_monterey_sensor: "entity"
+  esp_update_service: "entity"
