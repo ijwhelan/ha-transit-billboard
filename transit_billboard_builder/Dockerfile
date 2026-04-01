@@ -9,7 +9,8 @@ RUN \
     python3 \
     py3-pip \
     py3-pillow \
-    py3-websockets
+    py3-websockets \
+    py3-aiohttp
 
 # Copy data for add-on
 COPY run.sh /
