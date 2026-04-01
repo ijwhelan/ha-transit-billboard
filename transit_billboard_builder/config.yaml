@@ -1,6 +1,6 @@
 name: "Transit Billboard Builder"
 description: "Generates a BMP image for your ESPHome transit billboard."
-version: "1.0.7"
+version: "1.0.8"
 slug: "transit_billboard_builder"
 init: false
 arch:
@@ -19,14 +19,6 @@ ingress_port: 8099
 panel_icon: mdi:train-car
 panel_title: Transit Billboard
 options:
-  k_ingleside_sensor: "sensor.k_ingleside_arrivals"
-  _43_masonic_sensor: "sensor.43_masonic_arrivals"
-  _23_monterey_sensor: "sensor.23_monterey_arrivals"
   esp_update_service: "esphome.billboard_update_billboard"
-  background_image_path: "/config/www/background.bmp"
 schema:
-  k_ingleside_sensor: "str"
-  _43_masonic_sensor: "str"
-  _23_monterey_sensor: "str"
   esp_update_service: "str"
-  background_image_path: "str"
