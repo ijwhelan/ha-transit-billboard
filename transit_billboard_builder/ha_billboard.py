@@ -134,7 +134,7 @@ def draw_text(image, x_start, y_start, text, color):
         # Move cursor right by character width + 1 pixel letter spacing
         x += width + 1
 
-def generate_billboard(routes_data, input_path=None, output_path='/config/www/transit_billboard.bmp'):
+def generate_billboard(lines_config, input_path=None, output_path='/config/www/transit_billboard.bmp'):
     width, height = 64, 32
     
     # Load background image or fallback to black
@@ -156,20 +156,12 @@ def generate_billboard(routes_data, input_path=None, output_path='/config/www/tr
     # PAINT YOUR ARRIVAL TIMES ON TOP OF YOUR BACKGROUND HERE #
     ###########################################################
 
-    # routes_data is a map of route names to lists of arrival times containing up to two entries
-    y_offset = 1
-
-    # K-Ingleside to Embarcadero
-    train_k_ingleside_arrivals = routes_data.get('K-Ingleside', [])
-    paint_arrival_times(image, 29, 3, train_k_ingleside_arrivals, text_color)
-    
-    # 43-Masonic to Fort Mason
-    bus_43_masonic_arrivals = routes_data.get('43-Masonic', [])
-    paint_arrival_times(image, 29, 13, bus_43_masonic_arrivals, text_color)
-
-    # 23-Monterey to Bayview
-    bus_23_monterey_arrivals = routes_data.get('23-Monterey', [])
-    paint_arrival_times(image, 29, 23, bus_23_monterey_arrivals, text_color)
+    # lines_config is a list of dictionary objects: [{"name": "K", "x": 29, "y": 3, "arrivals": ["5", "12"]}]
+    for line in lines_config:
+        x_offset = int(line.get('x', 0))
+        y_offset = int(line.get('y', 0))
+        arrivals = line.get('arrivals', [])
+        paint_arrival_times(image, x_offset, y_offset, arrivals, text_color)
 
     ############################
     # END CUSTOM PAINTING CODE #
@@ -210,26 +202,19 @@ if __name__ == "__main__":
             sys.exit(1)
         
         data_arg = sys.argv[1]
-        routes_data = {}
+        lines_config = []
         
-        # Try parsing as JSON first (ideal for Home Assistant templates)
         try:
-            routes_data = json.loads(data_arg)
+            lines_config = json.loads(data_arg)
         except json.JSONDecodeError:
-            # Fallback to semicolon-separated lists "Bus:5,12;Train:3"
-            for pair in data_arg.split(';'):
-                if ':' in pair:
-                    r, t_list = pair.split(':', 1)
-                    routes_data[r.strip()] = [int(t.strip()) for t in t_list.split(',') if t.strip().isdigit()]
-                else:
-                    routes_data[pair.strip()] = []
+            pass
         
         # Check for optional input image path
         in_path = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] not in ("", "None") else None
         # Check for optional output path
         out_path = sys.argv[3] if len(sys.argv) > 3 else '/config/www/transit_billboard.bmp'
         
-        generate_billboard(routes_data, in_path, out_path)
+        generate_billboard(lines_config, in_path, out_path)
         
         script_dir = os.path.dirname(os.path.abspath(__file__))
         log_path = os.path.join(script_dir, "billboard_log.txt")

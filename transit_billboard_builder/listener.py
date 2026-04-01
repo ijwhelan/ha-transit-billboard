@@ -10,47 +10,57 @@ from ha_billboard import generate_billboard
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-# Options and Secrets
+# Secrets and paths
 OPTIONS_PATH = os.environ.get('OPTIONS_PATH', '/data/options.json')
+LINES_PATH = os.environ.get('LINES_PATH', '/data/lines.json')
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN', '')
 OUTPUT_PATH = os.environ.get('OUTPUT_PATH', '/config/www/transit_billboard.bmp')
 INPUT_PATH = None
 ESP_UPDATE_SERVICE = ""
 ws_connection = None
 
-# Default entities if options.json is missing or incomplete
-ENTITIES = {
-    'K-Ingleside': 'sensor.k_ingleside_arrivals',
-    '43-Masonic': 'sensor.43_masonic_arrivals',
-    '23-Monterey': 'sensor.23_monterey_arrivals'
-}
-
-current_data = {
-    'K-Ingleside': [],
-    '43-Masonic': [],
-    '23-Monterey': []
-}
+# Global state
+lines_config = []
+arrival_cache = {}
 
 def load_options():
-    global ENTITIES, ESP_UPDATE_SERVICE, INPUT_PATH
+    global ESP_UPDATE_SERVICE, INPUT_PATH, lines_config
     if os.path.exists(OPTIONS_PATH):
         try:
             with open(OPTIONS_PATH, 'r') as f:
                 opts = json.load(f)
-                logging.info(f"Loaded options: {opts}")
-                ENTITIES['K-Ingleside'] = opts.get('k_ingleside_sensor', ENTITIES['K-Ingleside'])
-                ENTITIES['43-Masonic'] = opts.get('_43_masonic_sensor', ENTITIES['43-Masonic'])
-                ENTITIES['23-Monterey'] = opts.get('_23_monterey_sensor', ENTITIES['23-Monterey'])
                 ESP_UPDATE_SERVICE = opts.get('esp_update_service', "")
-                
                 bg_path = opts.get('background_image_path', '/config/www/background.bmp')
                 if bg_path and os.path.exists(bg_path):
                     INPUT_PATH = bg_path
                 else:
-                    logging.warning(f"Background image not found at '{bg_path}', defaulting to internal path.")
                     INPUT_PATH = bg_path if bg_path else '/config/www/background.bmp'
         except Exception as e:
             logging.error(f"Error loading options.json: {e}")
+            
+    # Load dynamic lines config
+    if os.path.exists(LINES_PATH):
+        try:
+            with open(LINES_PATH, 'r') as f:
+                lines_config = json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading lines.json: {e}")
+    else:
+        # Default fallback matching the original locations and lines so it seamlessly migrates users
+        lines_config = [
+            {"name": "K-Ingleside", "entity_id": "sensor.k_ingleside_arrivals", "x": 29, "y": 3},
+            {"name": "43-Masonic", "entity_id": "sensor.43_masonic_arrivals", "x": 29, "y": 13},
+            {"name": "23-Monterey", "entity_id": "sensor.23_monterey_arrivals", "x": 29, "y": 23}
+        ]
+        save_lines_config()
+
+def save_lines_config():
+    try:
+        os.makedirs(os.path.dirname(LINES_PATH), exist_ok=True)
+        with open(LINES_PATH, 'w') as f:
+            json.dump(lines_config, f)
+    except Exception as e:
+        logging.error(f"Error saving lines.json: {e}")
 
 def parse_state(state_str):
     if not state_str or str(state_str).strip().lower() in ('unknown', 'unavailable', 'none', 'null', ''):
@@ -62,6 +72,19 @@ def parse_state(state_str):
         return [int(float(x.strip())) for x in clean_str.split(',') if x.strip()]
     except Exception:
         return [str(state_str)]
+
+def get_merged_lines():
+    merged = []
+    for line in lines_config:
+        line_copy = dict(line)
+        line_copy['arrivals'] = arrival_cache.get(line.get('entity_id'), [])
+        merged.append(line_copy)
+    return merged
+
+def trigger_redraw():
+    merged = get_merged_lines()
+    safe_input = INPUT_PATH if (INPUT_PATH and os.path.exists(INPUT_PATH)) else None
+    generate_billboard(merged, safe_input, OUTPUT_PATH)
 
 async def trigger_esp_update_if_needed():
     global ws_connection
@@ -82,7 +105,7 @@ async def trigger_esp_update_if_needed():
 async def fetch_initial_states():
     if not SUPERVISOR_TOKEN:
         logging.warning("No SUPERVISOR_TOKEN found. Cannot fetch initial states.")
-        generate_billboard(current_data, INPUT_PATH if os.path.exists(INPUT_PATH or "") else None, OUTPUT_PATH)
+        trigger_redraw()
         return
 
     headers = {
@@ -90,21 +113,21 @@ async def fetch_initial_states():
         "content-type": "application/json",
     }
     url_base = "http://supervisor/core/api/states/"
+    
+    unique_entities = set(line.get('entity_id') for line in lines_config if line.get('entity_id'))
 
     async with aiohttp.ClientSession() as session:
-        for route_name, entity_id in ENTITIES.items():
-            if not entity_id:
-                continue
+        for entity_id in unique_entities:
             try:
                 async with session.get(url_base + entity_id, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         state = data.get('state')
-                        current_data[route_name] = parse_state(state)
+                        arrival_cache[entity_id] = parse_state(state)
             except Exception as e:
                 logging.error(f"Error fetching {entity_id}: {e}")
     
-    generate_billboard(current_data, INPUT_PATH if os.path.exists(INPUT_PATH or "") else None, OUTPUT_PATH)
+    trigger_redraw()
 
 async def listen():
     global ws_connection
@@ -146,15 +169,18 @@ async def listen():
                     data = event.get("data", {})
                     entity_id = data.get("entity_id")
                     
-                    for route_name, track_id in ENTITIES.items():
-                        if entity_id == track_id:
-                            new_state = data.get("new_state", {}).get("state")
-                            current_data[route_name] = parse_state(new_state)
-                            
-                            safe_input = INPUT_PATH if os.path.exists(INPUT_PATH or "") else None
-                            generate_billboard(current_data, safe_input, OUTPUT_PATH)
-                            await trigger_esp_update_if_needed()
+                    isTracked = False
+                    for line in lines_config:
+                        if line.get('entity_id') == entity_id:
+                            isTracked = True
                             break
+                            
+                    if isTracked:
+                        new_state = data.get("new_state", {}).get("state")
+                        arrival_cache[entity_id] = parse_state(new_state)
+                        
+                        trigger_redraw()
+                        await trigger_esp_update_if_needed()
                             
         except websockets.exceptions.ConnectionClosed:
             ws_connection = None
@@ -166,55 +192,36 @@ async def listen():
 # --- Web UI (Ingress) Server ---
 
 async def handle_index(request):
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Transit Billboard</title>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #111; color: #fff; }}
-            .card {{ background: #222; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
-            .preview-container {{ display: flex; gap: 20px; justify-content: center; margin-top: 10px; }}
-            .preview-box {{ text-align: center; }}
-            .preview {{ border: 1px solid #444; image-rendering: pixelated; width: 256px; height: 128px; background: #000; }}
-            input[type=file] {{ margin: 15px 0; background: #333; padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box; }}
-            button {{ background: #03a9f4; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; }}
-            button:hover {{ background: #0288d1; }}
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h2 style="margin-top:0;">Transit Billboard Uploader</h2>
-            <p>Upload a custom <b>64x32</b> <code>.bmp</code> file to use as the background layout for your display! Leave transparent pixels perfectly black (<code>#000000</code>) so they don't overwrite the generated ETA text.</p>
-            <form action="upload" method="post" enctype="multipart/form-data">
-                <input type="file" name="background" accept=".bmp" required>
-                <button type="submit">Upload & Apply Background</button>
-            </form>
-            
-            <hr style="border-color:#444; margin: 30px 0;">
-            
-            <div class="preview-container">
-                <div class="preview-box">
-                    <h3 style="font-size:14px; color:#aaa;">Raw Background</h3>
-                    <img class="preview" src="preview_bg.bmp?t={int(time.time())}" alt="Background Preview">
-                </div>
-                <div class="preview-box">
-                    <h3 style="font-size:14px; color:#aaa;">Live Matrix Preview</h3>
-                    <img class="preview" src="preview_live.bmp?t={int(time.time())}" alt="Live Preview">
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return web.Response(text=html, content_type='text/html')
+    # Depending on where the code executes, ingress.html is in / or current dir
+    path = '/ingress.html' if os.path.exists('/ingress.html') else 'ingress.html'
+    try:
+        with open(path, 'r') as f:
+            html = f.read()
+            return web.Response(text=html, content_type='text/html')
+    except Exception:
+        return web.Response(text="ingress.html not found!", status=404)
+
+async def handle_get_config(request):
+    return web.json_response(lines_config)
+
+async def handle_post_config(request):
+    global lines_config
+    try:
+        new_config = await request.json()
+        lines_config = new_config
+        save_lines_config()
+        
+        # Redraw immediately
+        trigger_redraw()
+        await trigger_esp_update_if_needed()
+        return web.json_response({"status": "success"})
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
 
 async def handle_upload(request):
     reader = await request.multipart()
     field = await reader.next()
     if field.name == 'background':
-        filename = field.filename
-        
         target_path = INPUT_PATH if INPUT_PATH else '/config/www/background.bmp'
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         
@@ -228,8 +235,7 @@ async def handle_upload(request):
                 f.write(chunk)
         
         logging.info(f"Uploaded new background to {target_path} ({size} bytes)")
-        
-        generate_billboard(current_data, target_path, OUTPUT_PATH)
+        trigger_redraw()
         await trigger_esp_update_if_needed()
         
     return web.HTTPFound(location='./')
@@ -249,6 +255,8 @@ async def start_web_server():
     app = web.Application()
     app.add_routes([
         web.get('/', handle_index),
+        web.get('/api/config', handle_get_config),
+        web.post('/api/config', handle_post_config),
         web.post('/upload', handle_upload),
         web.get('/preview_bg.bmp', handle_preview_bg),
         web.get('/preview_live.bmp', handle_preview_live)

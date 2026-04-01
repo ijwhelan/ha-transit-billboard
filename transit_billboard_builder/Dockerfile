@@ -16,6 +16,7 @@ RUN \
 COPY run.sh /
 COPY ha_billboard.py /
 COPY listener.py /
+COPY ingress.html /
 
 RUN chmod a+x /run.sh
 
