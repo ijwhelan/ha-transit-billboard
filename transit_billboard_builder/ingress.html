@@ -88,7 +88,7 @@ let startX, startY, initialX, initialY;
 async function loadConfig() {
     try {
         // Fetch config
-        const res = await fetch('/api/config');
+        const res = await fetch('api/config');
         if (res.ok) {
             lines = await res.json();
             renderRoutes();
@@ -96,7 +96,7 @@ async function loadConfig() {
         }
         
         // Fetch entities for autocomplete dropdown
-        const entRes = await fetch('/api/entities');
+        const entRes = await fetch('api/entities');
         if (entRes.ok) {
             const entities = await entRes.json();
             const dl = document.getElementById('ha-entities');
@@ -205,7 +205,7 @@ function removeRoute(i) {
 
 async function saveConfig() {
     try {
-        await fetch('/api/config', {
+        await fetch('api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(lines)
