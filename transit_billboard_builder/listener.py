@@ -48,9 +48,9 @@ def load_options():
     else:
         # Default fallback matching the original locations and lines so it seamlessly migrates users
         lines_config = [
-            {"name": "K-Ingleside", "entity_id": "sensor.k_ingleside_arrivals", "x": 29, "y": 3},
-            {"name": "43-Masonic", "entity_id": "sensor.43_masonic_arrivals", "x": 29, "y": 13},
-            {"name": "23-Monterey", "entity_id": "sensor.23_monterey_arrivals", "x": 29, "y": 23}
+            {"name": "K-Ingleside", "entity_ids": ["sensor.k_ingleside_arrivals"], "x": 29, "y": 3, "limit": 2, "min_time": 0},
+            {"name": "43-Masonic", "entity_ids": ["sensor.43_masonic_arrivals"], "x": 29, "y": 13, "limit": 2, "min_time": 0},
+            {"name": "23-Monterey", "entity_ids": ["sensor.23_monterey_arrivals"], "x": 29, "y": 23, "limit": 2, "min_time": 0}
         ]
         save_lines_config()
 
@@ -77,7 +77,30 @@ def get_merged_lines():
     merged = []
     for line in lines_config:
         line_copy = dict(line)
-        line_copy['arrivals'] = arrival_cache.get(line.get('entity_id'), [])
+        entity_ids = line.get('entity_ids', [])
+        
+        # Backwards compatibility check
+        if 'entity_id' in line and not entity_ids:
+            entity_ids = [line['entity_id']]
+            
+        all_arrivals = []
+        for eid in entity_ids:
+            if not eid: continue
+            raw_arrivals = arrival_cache.get(eid, [])
+            for a in raw_arrivals:
+                try:
+                    all_arrivals.append(int(round(float(a))))
+                except (ValueError, TypeError):
+                    pass # ignore non-numerical predictions for sorting
+                    
+        min_time = int(line.get('min_time', 0))
+        limit = int(line.get('limit', 2))
+        
+        # Filter and sort
+        valid_arrivals = [a for a in all_arrivals if a >= min_time]
+        valid_arrivals.sort()
+        
+        line_copy['arrivals'] = [str(a) for a in valid_arrivals[:limit]]
         merged.append(line_copy)
     return merged
 
@@ -114,7 +137,12 @@ async def fetch_initial_states():
     }
     url_base = "http://supervisor/core/api/states/"
     
-    unique_entities = set(line.get('entity_id') for line in lines_config if line.get('entity_id'))
+    unique_entities = set()
+    for line in lines_config:
+        if 'entity_ids' in line:
+            unique_entities.update(eid for eid in line['entity_ids'] if eid)
+        elif 'entity_id' in line and line['entity_id']:
+            unique_entities.add(line['entity_id'])
 
     async with aiohttp.ClientSession() as session:
         for entity_id in unique_entities:
@@ -171,7 +199,10 @@ async def listen():
                     
                     isTracked = False
                     for line in lines_config:
-                        if line.get('entity_id') == entity_id:
+                        eids = line.get('entity_ids', [])
+                        if line.get('entity_id') and not eids:
+                            eids = [line.get('entity_id')]
+                        if entity_id in eids:
                             isTracked = True
                             break
                             

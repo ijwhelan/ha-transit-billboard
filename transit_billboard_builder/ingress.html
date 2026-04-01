@@ -41,7 +41,7 @@
         .route-element:active { cursor: grabbing; background: rgba(255, 165, 0, 0.7); }
         
         .route-item { background: #333; padding: 15px; margin-bottom: 12px; border-radius: 6px; position:relative; }
-        input[type=text] { width: 100%; box-sizing:border-box; margin-top:4px; margin-bottom:8px; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:3px; }
+        input[type=text], input[type=number] { width: 100%; box-sizing:border-box; margin-top:4px; margin-bottom:8px; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:3px; }
         button { background: #03a9f4; color: white; border: none; padding: 10px; width:100%; border-radius: 4px; cursor: pointer; font-weight: bold; font-size:14px; }
         button:hover { background: #0288d1; }
         .remove-btn { position:absolute; top:15px; right:15px; background:transparent; color:#f44336; width:auto; padding:0; font-size:12px; }
@@ -115,6 +115,22 @@ function renderRoutes() {
     const list = document.getElementById('routesList');
     list.innerHTML = '';
     lines.forEach((line, i) => {
+        // Migration compat
+        if(!line.entity_ids) {
+            line.entity_ids = line.entity_id ? [line.entity_id] : [""];
+        }
+        if(line.limit === undefined) line.limit = 2;
+        if(line.min_time === undefined) line.min_time = 0;
+        
+        let sensorsHtml = '';
+        line.entity_ids.forEach((eid, j) => {
+            sensorsHtml += `
+            <div style="display:flex; gap:5px; margin-bottom:2px;">
+                <input type="text" list="ha-entities" value="${eid}" placeholder="sensor.xyz" onchange="updateSensor(${i}, ${j}, this.value)" style="margin-bottom:0;">
+                <button title="Remove Sensor" onclick="removeSensor(${i}, ${j})" style="width:auto; padding:5px 12px; background:#f44336; margin:0; margin-top:4px;">X</button>
+            </div>`;
+        });
+        
         const item = document.createElement('div');
         item.className = 'route-item';
         item.innerHTML = `
@@ -123,8 +139,21 @@ function renderRoutes() {
             <br><br>
             <label style="font-size:12px; color:#ccc;">Display Name:</label>
             <input type="text" value="${line.name}" placeholder="e.g. K-Ingleside" onchange="updateRoute(${i}, 'name', this.value)">
-            <label style="font-size:12px; color:#ccc;">Home Assistant Entity ID:</label>
-            <input type="text" list="ha-entities" value="${line.entity_id}" placeholder="sensor.xyz" onchange="updateRoute(${i}, 'entity_id', this.value)">
+            
+            <div style="display:flex; gap:10px; margin-bottom:8px;">
+                <div style="flex:1;">
+                    <label style="font-size:12px; color:#ccc;">Min Time Filter (mins):</label>
+                    <input type="number" min="0" value="${line.min_time}" onchange="updateRoute(${i}, 'min_time', parseInt(this.value) || 0)">
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:12px; color:#ccc;">Max Shown Checkins:</label>
+                    <input type="number" min="1" max="10" value="${line.limit}" onchange="updateRoute(${i}, 'limit', parseInt(this.value) || 2)">
+                </div>
+            </div>
+            
+            <label style="font-size:12px; color:#ccc; display:block; margin-bottom:4px;">Sensors (Ordered):</label>
+            ${sensorsHtml}
+            <button onclick="addSensor(${i})" style="background:#555; padding:6px; font-size:12px; margin-top:8px;">+ Add Sensor</button>
         `;
         list.appendChild(item);
     });
@@ -187,13 +216,30 @@ function stopDrag() {
 }
 
 function addRoute() {
-    lines.push({ name: "New Line", entity_id: "sensor.", x: 0, y: 0 });
+    lines.push({ name: "New Line", entity_ids: ["sensor."], x: 0, y: 0, limit: 2, min_time: 0 });
     renderRoutes();
     renderCanvas();
 }
 
 function updateRoute(i, key, val) {
     lines[i][key] = val;
+    renderCanvas();
+}
+
+function addSensor(routeIdx) {
+    lines[routeIdx].entity_ids.push("");
+    renderRoutes();
+    renderCanvas();
+}
+
+function updateSensor(routeIdx, sensorIdx, val) {
+    lines[routeIdx].entity_ids[sensorIdx] = val;
+    renderCanvas();
+}
+
+function removeSensor(routeIdx, sensorIdx) {
+    lines[routeIdx].entity_ids.splice(sensorIdx, 1);
+    renderRoutes();
     renderCanvas();
 }
 
