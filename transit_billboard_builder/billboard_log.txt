@@ -1,0 +1,2 @@
+SUCCESS! Image successfully rendered and saved to: test_billboard.bmp
+Data received: {"K-Ingleside": [3, 10], "43-Masonic": [12, 15], "23-Monterey": [4, 24]}
