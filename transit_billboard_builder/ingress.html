@@ -270,6 +270,11 @@ function refreshImages() {
     document.getElementById('livePreview').src = "preview_live.bmp?t=" + Date.now();
 }
 
+// Auto-refresh the live preview every 5 seconds to actually be 'live'
+setInterval(() => {
+    document.getElementById('livePreview').src = "preview_live.bmp?t=" + Date.now();
+}, 5000);
+
 // Init
 loadConfig();
 refreshImages();
