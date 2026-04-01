@@ -14,13 +14,13 @@ BITMAP_FONT = {
         " *** "
     ],
     '1': [
-        "  *  ",
-        " **  ",
-        "  *  ",
-        "  *  ",
-        "  *  ",
-        "  *  ",
-        " *** "
+        " * ",
+        "** ",
+        " * ",
+        " * ",
+        " * ",
+        " * ",
+        "***"
     ],
     '2': [
         " *** ",
@@ -100,17 +100,18 @@ BITMAP_FONT = {
         "  ",
         "  ",
         "  ",
+        "  ",
         " *",
         "* "
     ],
     ' ': [
-        "  ",
-        "  ",
-        "  ",
-        "  ",
-        "  ",
-        "  ",
-        "  "
+        " ",
+        " ",
+        " ",
+        " ",
+        " ",
+        " ",
+        " "
     ]
 }
 
@@ -158,17 +159,21 @@ def generate_billboard(routes_data, input_path=None, output_path='/config/www/tr
     # routes_data is a map of route names to lists of arrival times containing up to two entries
     y_offset = 1
 
-    # K-Ingleside
+    # K-Ingleside to Embarcadero
     train_k_ingleside_arrivals = routes_data.get('K-Ingleside', [])
-    paint_arrival_times(image, 30, 3, train_k_ingleside_arrivals, text_color)
+    paint_arrival_times(image, 29, 3, train_k_ingleside_arrivals, text_color)
     
-    # 43-Masonic
+    # 43-Masonic to Fort Mason
     bus_43_masonic_arrivals = routes_data.get('43-Masonic', [])
-    paint_arrival_times(image, 30, 13, bus_43_masonic_arrivals, text_color)
+    paint_arrival_times(image, 29, 13, bus_43_masonic_arrivals, text_color)
 
-    # 23-Monterey
+    # 23-Monterey to Bayview
     bus_23_monterey_arrivals = routes_data.get('23-Monterey', [])
-    paint_arrival_times(image, 30, 23, bus_23_monterey_arrivals, text_color)
+    paint_arrival_times(image, 29, 23, bus_23_monterey_arrivals, text_color)
+
+    ############################
+    # END CUSTOM PAINTING CODE #
+    ############################    
 
     # Save the output image
     # Home Assistant doesn't always have a /config/www/ folder created by default.
