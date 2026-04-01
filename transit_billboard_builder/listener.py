@@ -211,8 +211,9 @@ async def handle_post_config(request):
         lines_config = new_config
         save_lines_config()
         
-        # Redraw immediately
-        trigger_redraw()
+        # When layout is changed, immediately fetch fresh HA API states for any newly typed entity IDs!
+        await fetch_initial_states()
+        
         await trigger_esp_update_if_needed()
         return web.json_response({"status": "success"})
     except Exception as e:
