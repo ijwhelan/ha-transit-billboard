@@ -10,7 +10,8 @@ Your Home Assistant server aggregates transit data for the lines and stops you s
 * Maximum number of predictions to display per-line
 * A lower bound filtering threshold to allow you to account for walking time to a given transit stop 
 
-<img width="500" alt="A web UI running on Home Assistant for configuring the display of transit data on the end device." src="https://github.com/user-attachments/assets/a5fd3f44-7303-413f-b089-0e65cb498acf" /><br />
+<img width="500" alt="A web UI running on Home Assistant for configuring the display of transit data on the end device." src="https://github.com/user-attachments/assets/34a35255-a8b6-4465-8de1-d260d40fb025" /><br />
+
 
 > **⚠️ AI Slop Disclosure**
 > 
