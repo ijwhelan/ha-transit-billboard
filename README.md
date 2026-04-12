@@ -1,6 +1,16 @@
 # Transit Billboard for Home Assistant and ESPHome
 
-This project allows you to build a transit departures board using an ESP32 and a HUB75 display, orchestrated by a [Home Assistant](https://www.home-assistant.io/) server.
+This project allows you to build a transit departures board using an ESP32 and a HUB75 display, orchestrated by a [Home Assistant](https://www.home-assistant.io/) server. 
+
+<img width="500" alt="A HUB75 display in a 3D printed enclosure showing transit predictions for 3 transit lines." src="https://github.com/user-attachments/assets/5050894c-69f3-4fd7-aa13-15e92a37c6dc" /><br />
+
+Your Home Assistant server aggregates transit data for the lines and stops you specify, and this data is baked into a bitmap which is then served to your ESP32. Transit data can be painted atop a custom background bitmap, with a web UI for configuring the following:
+* Home Assistant entities corresponding to each transit line's prediction data
+* X/Y placement of each line's prediction data on top of your background bitmap
+* Maximum number of predictions to display per-line
+* A lower bound filtering threshold to allow you to account for walking time to a given transit stop 
+
+<img width="500" alt="A web UI running on Home Assistant for configuring the display of transit data on the end device." src="https://github.com/user-attachments/assets/a5fd3f44-7303-413f-b089-0e65cb498acf" /><br />
 
 > **⚠️ AI Slop Disclosure**
 > 
